@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(\"venv\\Scripts\\pip.exe\" install --upgrade sentence-transformers==2.7.0)",
+      "Bash(\"venv\\Scripts\\python.exe\" -c \"from app.services.vector_store import *; print(''Import successful!'')\")",
+      "Bash(\"venv\\Scripts\\python.exe\" -m uvicorn:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
