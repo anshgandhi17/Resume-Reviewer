@@ -2,6 +2,16 @@
 
 An intelligent resume analysis application that uses AI to match resumes against job descriptions, providing actionable insights and improvement suggestions.
 
+## Documentation
+
+- **[User Guide](docs/USER_GUIDE.md)** - How to use the application
+- **[Developer Guide](docs/DEVELOPER_GUIDE.md)** - Development and contribution guide
+- **[API Reference](docs/API_REFERENCE.md)** - API endpoint documentation
+- **[RAG Architecture](docs/RAG_ARCHITECTURE.md)** - Advanced RAG pipeline details
+- **[Installation Guide](docs/INSTALLATION.md)** - Detailed installation instructions
+- **[Deployment Guide](docs/DEPLOYMENT.md)** - Production deployment strategies
+- **[Migration Guide](docs/MIGRATION_GUIDE.md)** - Upgrading from standard to enhanced RAG
+
 ## Features
 
 - **Match Analysis Dashboard**: Overall compatibility score, skills breakdown, and ATS-friendliness score
