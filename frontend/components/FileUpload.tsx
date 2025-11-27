@@ -3,13 +3,21 @@
 import { useState, useCallback, useEffect } from 'react';
 import { api, AnalysisResult } from '@/lib/api';
 import { ollamaService } from '@/lib/ollama';
+import { parallelLimit, ConcurrencyConfig, shouldUseConservativeMode } from '@/lib/concurrency';
+
+import type { ProjectRankingResponse } from '@/lib/api';
 
 interface FileUploadProps {
-  onUploadSuccess: (result: AnalysisResult) => void;
+  onUploadSuccess: (
+    results: AnalysisResult[],
+    projectRanking?: ProjectRankingResponse,
+    files?: File[],
+    jobTitle?: string
+  ) => void;
 }
 
 export default function FileUpload({ onUploadSuccess }: FileUploadProps) {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [jobDescription, setJobDescription] = useState('');
   const [jobTitle, setJobTitle] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -18,6 +26,9 @@ export default function FileUpload({ onUploadSuccess }: FileUploadProps) {
   const [processingStep, setProcessingStep] = useState('');
   const [ollamaConnected, setOllamaConnected] = useState<boolean | null>(null);
   const [ollamaError, setOllamaError] = useState('');
+  const [rankingMethod, setRankingMethod] = useState<'llm' | 'vector'>('llm');
+  const [currentFileIndex, setCurrentFileIndex] = useState(0);
+  const [totalFiles, setTotalFiles] = useState(0);
 
   // Check Ollama connection on mount
   useEffect(() => {
@@ -54,34 +65,46 @@ export default function FileUpload({ onUploadSuccess }: FileUploadProps) {
     e.stopPropagation();
     setDragActive(false);
 
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const droppedFile = e.dataTransfer.files[0];
-      if (droppedFile.type === 'application/pdf') {
-        setFile(droppedFile);
-        setError('');
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const droppedFiles = Array.from(e.dataTransfer.files);
+      const pdfFiles = droppedFiles.filter(file => file.type === 'application/pdf');
+
+      if (pdfFiles.length === 0) {
+        setError('Please upload PDF files only');
+      } else if (pdfFiles.length > 5) {
+        setError('Maximum 5 files allowed at once');
       } else {
-        setError('Please upload a PDF file');
+        setFiles(pdfFiles);
+        setError('');
       }
     }
   }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const selectedFile = e.target.files[0];
-      if (selectedFile.type === 'application/pdf') {
-        setFile(selectedFile);
-        setError('');
+    if (e.target.files && e.target.files.length > 0) {
+      const selectedFiles = Array.from(e.target.files);
+      const pdfFiles = selectedFiles.filter(file => file.type === 'application/pdf');
+
+      if (pdfFiles.length === 0) {
+        setError('Please upload PDF files only');
+      } else if (pdfFiles.length > 5) {
+        setError('Maximum 5 files allowed at once');
       } else {
-        setError('Please upload a PDF file');
+        setFiles(pdfFiles);
+        setError('');
       }
     }
+  };
+
+  const removeFile = (index: number) => {
+    setFiles(files.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!file) {
-      setError('Please select a resume file');
+    if (files.length === 0) {
+      setError('Please select at least one resume file');
       return;
     }
 
@@ -97,55 +120,111 @@ export default function FileUpload({ onUploadSuccess }: FileUploadProps) {
 
     setUploading(true);
     setError('');
+    setTotalFiles(files.length);
+    setCurrentFileIndex(0);
 
     try {
-      // Step 1: Process resume on backend (PDF extraction + vector search)
-      setProcessingStep('Uploading and processing PDF...');
-      const processedData = await api.processResume(file, jobDescription, jobTitle || undefined);
+      let projectRanking: ProjectRankingResponse | undefined;
 
-      // Step 2: Analyze with local Ollama
-      setProcessingStep('Analyzing resume match (using local Ollama)...');
-      const matchAnalysis = await ollamaService.analyzeResumeMatch(
-        processedData.resume_text,
-        processedData.job_description
-      );
+      // Check if we should use conservative (sequential) mode
+      const conservativeMode = shouldUseConservativeMode();
+      const maxConcurrentResumes = conservativeMode ? 1 : ConcurrencyConfig.MAX_RESUME_PROCESSING;
 
-      // Step 3: Generate improvements
-      setProcessingStep('Generating improvement suggestions...');
-      const improvements = await ollamaService.generateImprovements(
-        processedData.resume_text,
-        processedData.job_description,
-        matchAnalysis.missing_skills
-      );
+      if (conservativeMode) {
+        console.log('Using conservative mode (limited memory/CPU detected)');
+        setProcessingStep('⚙️ Initializing (memory-safe mode)...');
+      } else {
+        setProcessingStep('⚙️ Initializing pipeline...');
+      }
 
-      // Step 4: Compare requirements
-      setProcessingStep('Comparing requirements...');
-      const comparisons = await ollamaService.compareRequirements(
-        processedData.resume_text,
-        processedData.job_description
-      );
+      // If multiple files, rank projects in parallel with processing
+      let projectRankingPromise: Promise<ProjectRankingResponse | undefined> = Promise.resolve(undefined);
+      if (files.length > 1) {
+        setProcessingStep(`🔍 Extracting projects from ${files.length} resumes (${rankingMethod === 'llm' ? 'AI-based' : 'vector similarity'} ranking)...`);
+        projectRankingPromise = api.rankProjects(files, jobDescription, 10, rankingMethod).catch(err => {
+          console.error('Project ranking failed:', err);
+          return undefined;
+        });
+      }
 
-      // Build final result
-      const result: AnalysisResult = {
-        match_analysis: {
-          overall_score: matchAnalysis.overall_score,
-          skills: {
-            matched: matchAnalysis.matched_skills,
-            missing: matchAnalysis.missing_skills,
-            transferable: []
-          },
-          experience_relevance: {},
-          ats_score: matchAnalysis.ats_score
-        },
-        improvements: improvements,
-        comparisons: comparisons,
-        similar_resumes: processedData.similar_resumes
-      };
+      // Process files with concurrency limit
+      const results = await parallelLimit(
+        files,
+        maxConcurrentResumes,
+        async (file, i) => {
+        try {
+          setCurrentFileIndex(i + 1);
 
-      onUploadSuccess(result);
+          // Step 1: Process resume on backend (PDF extraction + vector search)
+          setProcessingStep(`📄 [${i + 1}/${files.length}] Parsing ${file.name}...`);
+          const processedData = await api.processResume(file, jobDescription, jobTitle || undefined);
+
+          // Step 2: Analyze with local Ollama
+          setProcessingStep(`🤖 [${i + 1}/${files.length}] Analyzing match for ${file.name}...`);
+          const matchAnalysis = await ollamaService.analyzeResumeMatch(
+            processedData.resume_text,
+            processedData.job_description
+          );
+
+          // Steps 3-4: Run improvements and comparisons in parallel (both use matchAnalysis results)
+          setProcessingStep(`💡 [${i + 1}/${files.length}] Generating improvements & comparisons for ${file.name}...`);
+          const [improvements, comparisons] = await Promise.all([
+            // Step 3: Generate improvements
+            ollamaService.generateImprovements(
+              processedData.resume_text,
+              processedData.job_description,
+              matchAnalysis.missing_skills
+            ),
+
+            // Step 4: Compare requirements
+            ollamaService.compareRequirements(
+              processedData.resume_text,
+              processedData.job_description
+            )
+          ]);
+
+          // Build result for this file
+          const result: AnalysisResult = {
+            match_analysis: {
+              overall_score: matchAnalysis.overall_score,
+              skills: {
+                matched: matchAnalysis.matched_skills,
+                missing: matchAnalysis.missing_skills,
+                transferable: []
+              },
+              experience_relevance: {},
+              ats_score: matchAnalysis.ats_score
+            },
+            improvements: improvements,
+            comparisons: comparisons,
+            similar_resumes: processedData.similar_resumes,
+            filename: file.name
+          };
+
+          return result;
+        } catch (err: any) {
+          console.error(`Error processing ${file.name}:`, err);
+
+          // Check if it's a memory error
+          if (err.message?.includes('out of memory') || err.message?.includes('OOM')) {
+            throw new Error(`Memory error processing ${file.name}. Try processing fewer resumes at once.`);
+          }
+
+          throw err;
+        }
+      });
+
+      // Wait for project ranking to complete
+      if (files.length > 1) {
+        setProcessingStep(`⚡ Ranking projects and experiences...`);
+      }
+      const projectRankingResult = await projectRankingPromise;
+
+      setProcessingStep('✅ Analysis complete!');
+      onUploadSuccess(results, projectRankingResult, files, jobTitle || undefined);
     } catch (err: any) {
       console.error('Analysis error:', err);
-      setError(err.message || err.response?.data?.detail || 'Failed to analyze resume. Please try again.');
+      setError(err.message || err.response?.data?.detail || 'Failed to analyze resumes. Please try again.');
     } finally {
       setUploading(false);
       setProcessingStep('');
@@ -158,7 +237,7 @@ export default function FileUpload({ onUploadSuccess }: FileUploadProps) {
         {/* File Upload */}
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-            Upload Resume (PDF)
+            Upload Resumes (PDF) - Up to 5 files
           </label>
           <div
             className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
@@ -174,6 +253,7 @@ export default function FileUpload({ onUploadSuccess }: FileUploadProps) {
             <input
               type="file"
               accept=".pdf"
+              multiple
               onChange={handleFileChange}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             />
@@ -192,9 +272,9 @@ export default function FileUpload({ onUploadSuccess }: FileUploadProps) {
                 />
               </svg>
               <div className="text-slate-600 dark:text-slate-400">
-                {file ? (
+                {files.length > 0 ? (
                   <span className="font-medium text-primary-600 dark:text-primary-400">
-                    {file.name}
+                    {files.length} file{files.length > 1 ? 's' : ''} selected
                   </span>
                 ) : (
                   <>
@@ -205,9 +285,53 @@ export default function FileUpload({ onUploadSuccess }: FileUploadProps) {
                   </>
                 )}
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400">PDF up to 10MB</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">PDF up to 10MB each, max 5 files</p>
             </div>
           </div>
+
+          {/* Selected Files List */}
+          {files.length > 0 && (
+            <div className="mt-4 space-y-2">
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Selected Files:</p>
+              {files.map((file, index) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800 rounded-lg"
+                >
+                  <div className="flex items-center space-x-3">
+                    <svg
+                      className="h-5 w-5 text-red-500"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    <span className="text-sm text-slate-700 dark:text-slate-300">{file.name}</span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeFile(index)}
+                    className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                  >
+                    <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                      <path
+                        fillRule="evenodd"
+                        d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Job Title */}
@@ -289,7 +413,44 @@ export default function FileUpload({ onUploadSuccess }: FileUploadProps) {
         {/* Processing Step */}
         {uploading && processingStep && (
           <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-            <p className="text-sm text-blue-700 dark:text-blue-400">{processingStep}</p>
+            <div className="flex items-center">
+              <svg
+                className="animate-spin h-5 w-5 text-blue-600 dark:text-blue-400 mr-3"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                ></circle>
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-blue-700 dark:text-blue-400">{processingStep}</p>
+                {totalFiles > 1 && currentFileIndex > 0 && (
+                  <div className="mt-2">
+                    <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-2">
+                      <div
+                        className="bg-blue-600 dark:bg-blue-400 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${(currentFileIndex / totalFiles) * 100}%` }}
+                      ></div>
+                    </div>
+                    <p className="text-xs text-blue-600 dark:text-blue-300 mt-1">
+                      {currentFileIndex} of {totalFiles} resumes processed
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -300,10 +461,57 @@ export default function FileUpload({ onUploadSuccess }: FileUploadProps) {
           </div>
         )}
 
+        {/* Ranking Method Selection (only for multiple files) */}
+        {files.length > 1 && (
+          <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-4">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">
+              Ranking Method
+            </label>
+            <div className="space-y-2">
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="radio"
+                  name="rankingMethod"
+                  value="llm"
+                  checked={rankingMethod === 'llm'}
+                  onChange={(e) => setRankingMethod(e.target.value as 'llm' | 'vector')}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-slate-300"
+                />
+                <div className="ml-3">
+                  <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                    LLM-Based Ranking
+                  </span>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Uses AI to understand context and provide reasoning (slower, more accurate)
+                  </p>
+                </div>
+              </label>
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="radio"
+                  name="rankingMethod"
+                  value="vector"
+                  checked={rankingMethod === 'vector'}
+                  onChange={(e) => setRankingMethod(e.target.value as 'llm' | 'vector')}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-slate-300"
+                />
+                <div className="ml-3">
+                  <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                    Vector Similarity Ranking
+                  </span>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Uses semantic similarity for fast, deterministic results
+                  </p>
+                </div>
+              </label>
+            </div>
+          </div>
+        )}
+
         {/* Submit Button */}
         <button
           type="submit"
-          disabled={uploading || !file || !jobDescription.trim() || !ollamaConnected}
+          disabled={uploading || files.length === 0 || !jobDescription.trim() || !ollamaConnected}
           className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white font-medium py-3 px-6 rounded-lg transition-colors disabled:cursor-not-allowed"
         >
           {uploading ? (
@@ -331,7 +539,7 @@ export default function FileUpload({ onUploadSuccess }: FileUploadProps) {
               Analyzing...
             </span>
           ) : (
-            'Analyze Resume'
+            files.length > 1 ? `Analyze ${files.length} Resumes` : 'Analyze Resume'
           )}
         </button>
       </form>

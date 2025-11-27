@@ -92,6 +92,12 @@ class Settings(BaseSettings):
     batch_timeout_per_file: int = 60           # Seconds per file
     batch_use_parallel: bool = True            # Use parallel processing
 
+    # Concurrency Settings (Memory Management)
+    max_concurrent_llm_calls: int = 3          # Max parallel LLM calls (Ollama)
+    max_concurrent_pdf_processing: int = 5     # Max parallel PDF parsing
+    enable_resource_monitoring: bool = True    # Monitor CPU/memory and adjust
+    sequential_mode_memory_threshold_gb: float = 2.0  # Switch to sequential if <2GB free
+
     # Logging Settings
     log_level: str = "INFO"                    # DEBUG, INFO, WARNING, ERROR, CRITICAL
     log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
