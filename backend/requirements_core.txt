@@ -1,3 +1,4 @@
+# Core dependencies only (fast install)
 # FastAPI and server
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
@@ -27,13 +28,8 @@ pydantic-settings==2.1.0
 # Document Processing
 python-docx==1.1.0
 
-# Advanced RAG Components
-# Cross-encoder for re-ranking
+# BM25 search
 rank-bm25==0.2.2
 
-# Evaluation and Observability
-ragas==0.1.5
-arize-phoenix==3.0.0
-
-# Additional utilities
+# Core scientific computing
 numpy==1.24.3

@@ -39,6 +39,10 @@ Thumbs.db
 # Application specific
 backend/uploads/
 backend/vectordb/
+backend/chroma_db/
+backend/data/uploads/
+backend/data/outputs/
+backend/evaluation_results/
 *.pdf
 
 # Testing
@@ -46,7 +50,21 @@ backend/vectordb/
 coverage/
 *.cover
 .coverage
+htmlcov/
+.tox/
 
 # Build files
 *.pyc
 *.pyo
+
+# Claude Code
+.claude/settings.local.json
+
+# LaTeX temporary files
+*.aux
+*.log
+*.out
+*.toc
+*.fdb_latexmk
+*.fls
+*.synctex.gz
