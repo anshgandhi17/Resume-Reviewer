@@ -1,0 +1,7 @@
+-r base.txt
+
+# Production Servers
+gunicorn==21.2.0
+
+# Monitoring
+prometheus-client==0.19.0
