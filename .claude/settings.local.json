@@ -3,7 +3,19 @@
     "allow": [
       "Bash(mkdir:*)",
       "Bash(npx create-next-app@latest . --typescript --tailwind --app --no-src-dir --import-alias \"@/*\")",
-      "Bash(dir venvScriptspython.exe)"
+      "Bash(dir venvScriptspython.exe)",
+      "Bash(python -m pip install:*)",
+      "Bash(timeout /t 60 /nobreak)",
+      "Bash(nul)",
+      "Bash(python -c:*)",
+      "Bash(python:*)",
+      "Bash(rm:*)",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nfeat: add enhanced RAG pipeline and evaluation framework\n\n- Add semantic chunking for intelligent resume parsing\n- Add HyDE (Hypothetical Document Embeddings) for query expansion\n- Add cross-encoder re-ranking for improved retrieval\n- Add advanced retriever with hybrid search\n- Add knowledge base management for multi-format ingestion\n- Add LLM judge and Ragas evaluation frameworks\n- Add observability with Arize Phoenix integration\n- Update vector store with enhanced chunking support\n- Update configuration for RAG pipeline settings\n- Add comprehensive documentation (RAG, installation, migration)\n- Update .gitignore for evaluation results and data directories\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git merge:*)",
+      "Bash(git mv:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []

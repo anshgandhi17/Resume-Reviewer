@@ -1,9 +1,9 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
 from app.models.schemas import JobDescription, TaskStatus, AnalysisResult
-from app.services.analysis_service import analyze_resume
-from app.utils.pdf_parser import PDFParser
-from app.services.vector_store import VectorStore
+from app.services.analysis.analysis_service import analyze_resume
+from app.services.parsing.pdf_parser import PDFParser
+from app.services.storage.vector_store import VectorStore
 from app.core.config import settings
 import os
 import uuid
@@ -153,7 +153,7 @@ async def process_resume(
 @router.get("/health")
 async def health_check():
     """Health check endpoint."""
-    from app.services.vector_store import VectorStore
+    from app.services.storage.vector_store import VectorStore
 
     try:
         # Check vector store

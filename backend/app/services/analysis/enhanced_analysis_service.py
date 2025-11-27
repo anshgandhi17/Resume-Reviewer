@@ -7,15 +7,15 @@ import logging
 import time
 from typing import Dict, List, Optional
 
-from app.utils.pdf_parser import PDFParser
-from app.services.vector_store import VectorStore
-from app.services.llm_service import LLMService
-from app.services.semantic_chunker import SemanticChunker
-from app.services.knowledge_base import KnowledgeBase
-from app.services.hyde import HyDEService
-from app.services.retriever import AdvancedRetriever
-from app.services.reranker import ReRanker
-from app.services.observability import observability, TraceStep
+from app.services.parsing.pdf_parser import PDFParser
+from app.services.storage.vector_store import VectorStore
+from app.services.llm.llm_service import LLMService
+from app.services.rag.semantic_chunker import SemanticChunker
+from app.services.rag.knowledge_base import KnowledgeBase
+from app.services.rag.hyde import HyDEService
+from app.services.rag.retriever import AdvancedRetriever
+from app.services.rag.reranker import ReRanker
+from app.services.monitoring.observability import observability, TraceStep
 from app.evaluation.llm_judge import llm_judge
 from app.core.config import settings
 

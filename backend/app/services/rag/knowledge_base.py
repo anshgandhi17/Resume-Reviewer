@@ -11,8 +11,8 @@ import logging
 from datetime import datetime
 import uuid
 
-from app.services.semantic_chunker import SemanticChunker
-from app.utils.pdf_parser import PDFParser
+from app.services.rag.semantic_chunker import SemanticChunker
+from app.services.parsing.pdf_parser import PDFParser
 
 try:
     from docx import Document

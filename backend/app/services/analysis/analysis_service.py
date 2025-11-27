@@ -1,6 +1,6 @@
-from app.utils.pdf_parser import PDFParser
-from app.services.vector_store import VectorStore
-from app.services.llm_service import LLMService
+from app.services.parsing.pdf_parser import PDFParser
+from app.services.storage.vector_store import VectorStore
+from app.services.llm.llm_service import LLMService
 from app.models.schemas import AnalysisResult, MatchAnalysis, SkillMatch, ImprovementSuggestion, ComparisonHighlight
 from typing import Dict
 import logging

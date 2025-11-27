@@ -7,7 +7,7 @@ from typing import List, Dict, Optional
 import logging
 from collections import defaultdict
 
-from app.services.hyde import HyDEService
+from app.services.rag.hyde import HyDEService
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
